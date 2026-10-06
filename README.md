@@ -17,9 +17,9 @@ song, the original ones included.
 - Optional: **Allow switching any song OFF** in the game's EA Trax list (see [below](#allow-switching-any-song-off)).
 - The new image keeps the game's PCSX2 CRC (`75BECC18` Europe, `BEBF8793` USA), so **PCSX2 still recognises the
   game and applies its patches** (widescreen etc.).
-<!-- TODO before release: replace the next line with the PCSX2 test result (as in the Revenge README). -->
-- **Status:** every image MusicKit writes is checked automatically (European and USA versions); in-game testing in
-  PCSX2 is in progress.
+- **Tested in PCSX2** with the European disc: songs added after the original 44 appear in **Driver Details →
+  EA GAMES™ TRAX** and play with their pop-up in menus and in races. The USA version is supported and checked
+  automatically by MusicKit.
 
 ---
 
@@ -42,9 +42,8 @@ DVD (4.7 GB) — calculated from *your* image. If it would not fit, you see a wa
 [FAQ](#faq)).
 
 ### Step 5 — Play
-Load the new `.iso` in PCSX2 (or burn it / run it on your PS2) and open **Options → EA GAMES TRAX**.
+Load the new `.iso` in PCSX2 (or burn it / run it on your PS2) and open **Driver Details → EA GAMES™ TRAX**.
 
-<!-- TODO before release: replace docs/images/step5_in_game.png (placeholder) with a real in-game screenshot. -->
 ![Step 5 - your songs in the game](docs/images/step5_in_game.png)
 
 ---

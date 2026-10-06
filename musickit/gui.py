@@ -700,7 +700,7 @@ class MusicKitGui:
                                self.job.message if not self.job.done else ("done" if self.job.ok else "failed"))
         if self.last_report:
             imgui.text_colored(_col(GREEN), "Saved %s - %d songs. Burn it or load it in an emulator; "
-                               "the songs are in Options > EA GAMES TRAX." %
+                               "the songs are in Driver Details > EA GAMES TRAX." %
                                (os.path.basename(self.out_path), self.last_report["total_songs"]))
 
     def ui_song_list(self):
