@@ -208,11 +208,6 @@ game CRC stays the same.
 - [Burnout Dominator MusicKit](https://github.com/Bondimm/burnout-dominator-musickit) — the same tool for Burnout
   Dominator (PS2).
 
-## Thanks
-
-- Everyone in the community who tested the Burnout Revenge MusicKit and sent feedback — this kit builds on what
-  you found.
-
 ## Legal
 
 **Please read this before using or sharing anything made with MusicKit.**
