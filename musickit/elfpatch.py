@@ -1,4 +1,4 @@
-"""Patches the Burnout 3: Takedown executable (Europe SLES_525.84 or USA SLUS_210.50) so the EA Trax playlist can be
+"""Patches the Burnout 3: Takedown executable (Europe SLES_525.84 / SLES_525.85 or USA SLUS_210.50) so the EA Trax playlist can be
 changed and can hold more than the 44 original songs.
 
 Facts (European addresses; the USA build has the same code at other addresses and is located by signature):
@@ -33,7 +33,7 @@ TABLE_SLOTS = SEG_SIZE // ENTRY    # 170
 # reaches the playlist's song count at manager +0x6C. So 95 songs at most (same as Burnout Revenge).
 MAX_SONGS = 95
 _DETECT_MAX = 100
-KNOWN = {0x75BECC18: "Europe SLES-52584", 0xBEBF8793: "USA SLUS-21050"}
+KNOWN = {0x75BECC18: "Europe SLES-52584", 0xCE49B0DE: "Europe SLES-52585", 0xBEBF8793: "USA SLUS-21050"}
 
 # Signature groups: European function windows containing the patch sites (located in other builds by masked search).
 EU_GROUPS = {

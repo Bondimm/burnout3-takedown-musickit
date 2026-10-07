@@ -10,12 +10,13 @@ song, the original ones included.
 
 - Works with your own disc image of **Burnout 3: Takedown for PlayStation 2**:
   - Europe / Australia — `SLES-52584` (English, Spanish, Dutch and Swedish texts)
+  - Europe — `SLES-52585` (French, German and Italian texts)
   - USA — `SLUS-21050`
 - Your original image is **only read, never modified**; MusicKit writes a **new** `.iso`.
 - Songs: MP3, FLAC, WAV, OGG, M4A … (anything ffmpeg can read), up to 95 songs in total.
 - Add, replace, rename, remove and reorder songs — and reopen an image MusicKit made to keep editing it.
 - Optional: **Allow switching any song OFF** in the game's EA Trax list (see [below](#allow-switching-any-song-off)).
-- The new image keeps the game's PCSX2 CRC (`75BECC18` Europe, `BEBF8793` USA), so **PCSX2 still recognises the
+- The new image keeps the game's PCSX2 CRC (`75BECC18` Europe SLES-52584, `CE49B0DE` Europe SLES-52585, `BEBF8793` USA), so **PCSX2 still recognises the
   game and applies its patches** (widescreen etc.).
 - **Tested in PCSX2** with the European disc: songs added after the original 44 appear in **Driver Details →
   EA GAMES™ TRAX** and play with their pop-up in menus and in races. The USA version is supported and checked
@@ -65,7 +66,8 @@ as the game will play it.
 
 ### Rename a song (per language)
 Click **Edit**: the three fields change title, artist and album for **all languages** at once. Open *English
-text*, *Spanish text*, *Dutch text*, *Swedish text* (European disc) to set a different text for one language only.
+text*, *Spanish text*, *Dutch text*, *Swedish text* (SLES-52584) or *French text*, *German text*, *Italian text*
+(SLES-52585) to set a different text for one language only.
 **Restore original names** undoes a rename of an original song.
 
 ### Remove songs
@@ -111,7 +113,7 @@ the names fit. Names of removed songs make room for new ones.
 | ffmpeg | downloaded automatically by `setup.bat` (or install it yourself: `winget install Gyan.FFmpeg`) |
 | Graphics | any GPU with OpenGL 3.3 (for the MusicKit window) |
 | Disk space | about 5 GB free for the new disc image (~3–4 GB) plus ~1 GB for Python packages and ffmpeg |
-| The game | your own disc image (.iso) of Burnout 3: Takedown for PS2: Europe `SLES-52584` or USA `SLUS-21050` |
+| The game | your own disc image (.iso) of Burnout 3: Takedown for PS2: Europe `SLES-52584` or `SLES-52585`, or USA `SLUS-21050` |
 | Internet | only once, during `setup.bat` |
 
 ## Installation (Windows 10 / 11)

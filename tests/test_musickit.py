@@ -1,6 +1,7 @@
 """MusicKit tests. Run from the repository folder: .venv\\Scripts\\python -m pytest tests
 
-Format tests use your own disc images when MUSICKIT_ISO (European ISO) and/or MUSICKIT_USA_ISO (USA ISO) are set;
+Format tests use your own disc images when MUSICKIT_ISO (European ISO, SLES-52584), MUSICKIT_FGI_ISO (European
+French/German/Italian ISO, SLES-52585) and/or MUSICKIT_USA_ISO (USA ISO) are set;
 they only read them. Without them those tests are skipped. MUSICKIT_FULL_TEST=1 also builds complete images
 (several GB each, written to the temp folder and deleted afterwards).
 """
@@ -17,10 +18,12 @@ from musickit import adpcm, core, elfpatch, iso, rws, strtable  # noqa: E402
 
 ISO = os.environ.get("MUSICKIT_ISO", "")  # path to your own Burnout 3: Takedown ISO (Europe)
 USA_ISO = os.environ.get("MUSICKIT_USA_ISO", "")
+FGI_ISO = os.environ.get("MUSICKIT_FGI_ISO", "")  # Europe French/German/Italian (SLES-52585)
 # per version: CRC, playlist, table, profile, heap start word, signature deltas (trax_setmode, profile_load_a,
 # menu_confirm, memory_map), title string of song 41
 VERSIONS = {
     "SLES_525.84": (0x75BECC18, 0x4A5EB0, 0x4A5A90, 0x4F55C0, 0x4845D4, (0, 0, 0, 0), 3277),
+    "SLES_525.85": (0xCE49B0DE, 0x4A5D30, 0x4A5910, 0x4F54C0, 0x484454, (0x10, 0x10, 0x10, 0x10), 3277),
     "SLUS_210.50": (0xBEBF8793, 0x4A5A20, 0x4A5600, 0x4F5040, 0x484154, (-0x410, -0x70, -0x460, 0x10), 3276),
 }
 
@@ -32,7 +35,7 @@ def _skip(path):
 
 
 def _isos():
-    out = [p for p in (ISO, USA_ISO) if p and os.path.exists(p)]
+    out = [p for p in (ISO, FGI_ISO, USA_ISO) if p and os.path.exists(p)]
     if not out:
         import pytest
         pytest.skip("set MUSICKIT_ISO and/or MUSICKIT_USA_ISO")
@@ -41,7 +44,7 @@ def _isos():
 
 def _elf_versions():
     out = []
-    for p in (ISO, USA_ISO):
+    for p in (ISO, FGI_ISO, USA_ISO):
         if p and os.path.exists(p):
             d = core.Disc(p)
             out.append((d.elf_path.lstrip("/"), d.elf) + VERSIONS[d.elf_path.lstrip("/")])

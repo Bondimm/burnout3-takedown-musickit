@@ -26,11 +26,12 @@ import numpy as np
 
 from . import audio, elfpatch, iso, rws, strtable
 
-LANGS = ("EN", "SP", "DU", "SW", "US")    # all text files MusicKit knows (a disc has a subset)
-LANG_NAMES = {"EN": "English", "SP": "Spanish", "DU": "Dutch", "SW": "Swedish", "US": "English (USA)"}
+LANGS = ("EN", "FR", "GE", "IT", "SP", "DU", "SW", "US")    # all text files MusicKit knows (a disc has a subset)
+LANG_NAMES = {"EN": "English", "FR": "French", "GE": "German", "IT": "Italian", "SP": "Spanish", "DU": "Dutch",
+              "SW": "Swedish", "US": "English (USA)"}
 LANG_FILE = "/DATA/GLOBAL%s.BIN"
 ELF_PATH = "/SLES_525.84"                 # European default; the boot ELF is read from SYSTEM.CNF
-REGIONS = {"SLES_525.84": "Europe (SLES-52584)", "SLUS_210.50": "USA (SLUS-21050)"}
+REGIONS = {"SLES_525.84": "Europe (SLES-52584)", "SLES_525.85": "Europe (SLES-52585)", "SLUS_210.50": "USA (SLUS-21050)"}
 RWS_FILES = ("/TRACKS/_EATRAX0.RWS", "/TRACKS/_EATRAX1.RWS")
 SPLIT = 22
 MARK = b"MusicKit"     # first 8 bytes of the RWS segment UUID of songs MusicKit encoded
@@ -158,7 +159,7 @@ class Disc:
                 raise ValueError("not a Burnout 3: Takedown disc (missing %s)" % p)
         name = self.elf_path.lstrip("/")
         if name not in REGIONS:
-            raise ValueError("unsupported Burnout 3 version (%s); supported: Europe SLES-52584, USA SLUS-21050" % name)
+            raise ValueError("unsupported Burnout 3 version (%s); supported: Europe SLES-52584 or SLES-52585, USA SLUS-21050" % name)
         self.region = REGIONS[name]
         self.elf = self.img.read_file(self.elf_path)
         self.crc = elfpatch.crc(self.elf)

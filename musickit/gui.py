@@ -280,7 +280,7 @@ class MusicKitGui:
         self.disc = None
         self.disc_error = None
         if not path:
-            self.disc_error = "Choose your Burnout 3: Takedown ISO with Browse... (Europe SLES-52584 or USA SLUS-21050)"
+            self.disc_error = "Choose your Burnout 3: Takedown ISO with Browse... (Europe SLES-52584 / SLES-52585 or USA SLUS-21050)"
             return
         if not os.path.exists(path):
             self.disc_error = "ISO not found"
