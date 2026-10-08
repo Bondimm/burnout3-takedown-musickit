@@ -251,12 +251,11 @@ after it has played to the end once. Songs added with MusicKit are never locked.
 use [Allow switching any song OFF](#allow-switching-any-song-off) (command line: `build --unlock-off`). The PCSX2
 game CRC stays the same.
 
-## Other Burnout MusicKits
+## Other Burnout kits
 
-- [Burnout Revenge MusicKit](https://github.com/Bondimm/burnout-revenge-musickit) — the same tool for Burnout
-  Revenge (PS2).
-- [Burnout Dominator MusicKit](https://github.com/Bondimm/burnout-dominator-musickit) — the same tool for Burnout
-  Dominator (PS2).
+- [Burnout Revenge MusicKit](https://github.com/Bondimm/burnout-revenge-musickit) — add, replace, rename, remove and reorder the EA Trax songs of Burnout Revenge (PS2).
+- [Burnout Dominator MusicKit](https://github.com/Bondimm/burnout-dominator-musickit) — the same for Burnout Dominator (PS2).
+- [Burnout Revenge ChainKit](https://github.com/Bondimm/burnout-revenge-chainkit) — Burnout Dominator's supercharge and Burnout chain for Burnout Revenge (PS2).
 
 ## Legal
 
