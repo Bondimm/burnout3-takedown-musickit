@@ -103,6 +103,62 @@ the names fit. Names of removed songs make room for new ones.
 
 ---
 
+## PCSX2 HostFS folder (no new ISO)
+
+With PCSX2 you can also save your soundtrack into a **folder** instead of a new disc image. PCSX2's *Host
+Filesystem* then loads the game's files straight from that folder:
+
+- the first save copies the game's files from your ISO into the folder (once, about 3.5 GB);
+- every later save only rewrites the files MusicKit changes (the song files, the song names and the game
+  executable) — no new ISO each time, a save takes seconds;
+- there is no disc size limit in a folder.
+
+PCSX2 only (not a real PS2). The Criterion games need a small PCSX2 cheat to read from a folder:
+**Nahelam's HostFS patches** — thanks to [Nahelam](https://github.com/Nahelam) for making them. MusicKit does not
+include that cheat; you download it once.
+
+### Save into a folder
+1. Select your ISO in step 1 as usual and change the songs.
+2. In step 3 choose **Folder for PCSX2 HostFS** and pick an **empty folder** (or the folder of an earlier save).
+3. Click **Save to folder**. MusicKit writes the game's files and a small boot image
+   `Burnout 3 Takedown (HostFS).iso` into the folder (it holds only `SYSTEM.CNF` and the game executable and is rebuilt on
+   every save).
+
+To change the songs again, open the folder in step 1 with **Folder...** (or click *Open this folder here* after
+saving) and save again — it is saved into itself. Your ISO is never changed.
+
+### Play it in PCSX2 (once)
+1. Download the cheat for your version from
+   [Nahelam's PCSX2 HostFS patches](https://github.com/Nahelam/PCSX2-HostFS-Patches/tree/main/Criterion%20Games),
+   folder *Burnout 3 - Takedown*:
+   - Europe (SLES-52584): `SLES-52584_75BECC18_hostfs.pnach`
+   - Europe (SLES-52585): `SLES-52585_CE49B0DE_hostfs.pnach`
+   - USA (SLUS-21050): `SLUS-21050_BEBF8793_hostfs.pnach`
+
+   Put it into PCSX2's `cheats` folder (PCSX2: *Tools → Open Data Directory*).
+2. Add your folder to PCSX2's game list (*Settings → Game List → Add...*, without recursive scan). It shows
+   `Burnout 3 Takedown (HostFS).iso`.
+3. Right-click it → *Properties*: on the *Emulation* page switch on **Enable Host Filesystem**; on the *Cheats* page
+   switch on **Enable Cheats** and tick **HostFS**.
+4. Start `Burnout 3 Takedown (HostFS).iso`.
+
+The game CRC stays the same, so PCSX2's widescreen patches and your other cheats still apply. MusicKit shows these
+steps after saving, too.
+
+As Nahelam notes, with the HostFS cheat the network configuration and the Need for Speed demo on the disc cannot be started (save your network settings on the memory card first if you play online).
+
+**Stop the game before you save** into its folder: the running game keeps its files open. On Windows MusicKit
+then refuses to save (nothing is changed) and tells you why; restart the game after saving.
+
+**Linux:** the game asks for its files in mixed letter case while the disc stores them in upper case. That only
+works in a case-insensitive folder — on ext4 for example an empty folder with casefold switched on (`chattr +F`,
+needs a file system created with casefold support). MusicKit warns when the folder is case-sensitive but still lets
+you save and try. Windows and macOS (default file system) need nothing special.
+
+Command line ([optional](#command-line-optional)): `build --iso "Burnout 3 - Takedown (Europe).iso" --folder "<folder>"`
+saves into a folder; `--iso "<folder>"` opens one (it is then saved into itself); `validate "<your ISO>" "<folder>"`
+checks a folder.
+
 ## Requirements
 
 | What | Details |
