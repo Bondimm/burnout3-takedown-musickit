@@ -44,6 +44,12 @@ TYPICAL_SONG_SECONDS = 210
 DEFAULT_ISO = ""  # no default: the user picks their own disc image
 GAME = "Burnout 3 Takedown"       # name of the HostFS boot image: "Burnout 3 Takedown (HostFS).iso"
 NAHELAM_DIR = "Burnout 3 - Takedown"  # folder of the HostFS cheats for this game in Nahelam's repository
+# a game folder must have these (directory: at least that many files, about 60% of the disc's; "/FILE": that file),
+# else it is an incompletely extracted folder
+REQUIRED = {"CNF": 1, "DATA": 10, "IOP": 20, "OVID": 40, "PVEH": 140, "SOUND": 12, "TRACKS": 220,
+            "/IOP/GTFSHOST.IRX": 1}
+KEEP_HINT = ("To keep those changes, open this folder as the source instead (step 1 \"Folder...\", or --iso "
+             "<folder>) and change its songs there; or choose an empty folder to start again from your ISO.")
 CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "cache")
 _GUID = re.compile(r"^\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}$")
 FIELDS = ("title", "artist", "album")
@@ -176,6 +182,10 @@ class Disc:
         self.path = path
         self.img = open_image(path)
         self.is_folder = getattr(self.img, "is_folder", False)
+        if self.is_folder:
+            missing = hostfs.missing_parts(self.img, REQUIRED)
+            if missing:
+                raise ValueError(hostfs.incomplete_message(missing))
         self.elf_path = self._boot_elf()
         for p in (self.elf_path,) + RWS_FILES:
             if p not in self.img.entries:
@@ -531,7 +541,7 @@ class Disc:
             return "this is a file - choose a folder"
         if os.path.isdir(folder) and os.listdir(folder):
             if not hostfs.is_game_folder(folder):
-                return "this folder has other files: choose an empty folder or a folder with the game's files"
+                return hostfs.not_a_game_folder(folder)
             try:
                 img = hostfs.FolderImage(folder)
                 elf = hostfs.boot_elf(img.read_file("/SYSTEM.CNF"))
@@ -540,9 +550,104 @@ class Disc:
                         (elf or "?").strip("/"), self.elf_path.strip("/"))
                 if elf in img.entries and elfpatch.crc(img.read_file(elf)) != self.crc:
                     return "the game executable in this folder was changed by another tool (other PCSX2 CRC)"
+                if elf in img.entries:
+                    other = self.foreign_elf_changes(img.read_file(elf))
+                    if other:
+                        return ("the game executable in this folder has changes MusicKit did not make (%s): saving "
+                                "your ISO into it would remove them. %s" % (other, KEEP_HINT))
+                problem = self.folder_text_problem(img)
+                if problem:
+                    return problem
             except Exception as exc:
                 return "cannot read this folder: %s" % exc
         return None
+
+    def _folder_tables(self, img):
+        """{lang: IndexedStringTable} of the game folder `img` (ValueError when they cannot be read)."""
+        out = {}
+        for l in self.langs:
+            p = LANG_FILE % l
+            if p in img.entries:
+                out[l] = strtable.IndexedStringTable(img.read_file(p))
+        return out
+
+    def folder_text_problem(self, img):
+        """Why the text files of the game folder `img` cannot take the song names of this disc (None if they can):
+        another tool changed how many texts they have before the song names MusicKit adds."""
+        try:
+            tables = self._folder_tables(img)
+        except Exception as exc:
+            return "the text files in this folder cannot be read (%s). %s" % (exc, KEEP_HINT)
+        for l, t in tables.items():
+            if _base_count(t) != self.base:
+                return ("%s in this folder has %d texts before the song names, your ISO %d (changed by another "
+                        "tool): saving your ISO into it would remove those changes. %s"
+                        % ((LANG_FILE % l).lstrip("/"), _base_count(t), self.base, KEEP_HINT))
+        return None
+
+    def other_texts(self, img):
+        """Text files of the game folder `img` with texts (not song names) that differ from this disc:
+        ["GLOBALEN.BIN (3 texts)", ...]."""
+        try:
+            ftables = self._folder_tables(img)
+        except Exception:
+            return ["text files unreadable"]
+        managed = {sid for s in self.songs for sid in s.sids}
+        if self.elf_path in img.entries:
+            try:
+                managed |= {sid for row in elfpatch.read_table(img.read_file(self.elf_path)) for sid in row[2:5]}
+            except Exception:
+                pass
+        out = []
+        for l, ft in ftables.items():
+            it = self.tables[l]
+            n = sum(1 for i in range(min(self.base, len(ft))) if i not in managed and ft.get(i) != it.get(i))
+            if n:
+                out.append("%s (%d text%s)" % ((LANG_FILE % l).split("/")[-1], n, "" if n == 1 else "s"))
+        return out
+
+    def keep_folder_texts(self, folder, reps):
+        """Texts another mod changed in the folder's text files (not song names): put back on top of the song names
+        in `reps` (so saving an ISO into the folder keeps them). Returns ["GLOBALEN.BIN (3 texts)", ...]."""
+        fimg = hostfs.FolderImage(folder)
+        ftables = self._folder_tables(fimg)
+        if not ftables:
+            return []
+        managed = {sid for s in self.songs for sid in s.sids}
+        for p in (self.elf_path,):
+            for data in (reps.get(p), fimg.read_file(p) if p in fimg.entries else None):
+                if isinstance(data, bytes):
+                    try:
+                        managed |= {sid for row in elfpatch.read_table(data) for sid in row[2:5]}
+                    except Exception:
+                        pass
+        kept = []
+        for l, ft in ftables.items():
+            p = LANG_FILE % l
+            it = self.tables[l]
+            diff = [i for i in range(min(self.base, len(ft))) if i not in managed and ft.get(i) != it.get(i)]
+            if not diff:
+                continue
+            data = reps.get(p)
+            nt = strtable.IndexedStringTable(data if isinstance(data, bytes) else self.img.read_file(p))
+            for i in diff:
+                nt.set(i, ft.get(i))
+            if nt.size() > self.buffer_size:
+                raise ValueError("%s: the texts another mod changed in this folder and the song names do not fit "
+                                 "into the game's text buffer together. %s" % (p.lstrip("/"), KEEP_HINT))
+            reps[p] = nt.build()
+            kept.append("%s (%d text%s)" % (p.split("/")[-1], len(diff), "" if len(diff) == 1 else "s"))
+        return kept
+
+    def foreign_elf_changes(self, elf):
+        """Description of the changes in the executable `elf` (of a game folder) that are neither on this disc nor
+        MusicKit's own (song list); None when there are none."""
+        try:
+            skip = elfpatch.own_ranges(self.elf) + elfpatch.own_ranges(elf)
+        except Exception as exc:
+            return "MusicKit cannot read it: %s" % exc
+        r = hostfs.elf_changes(self.elf, elf, skip)
+        return hostfs.describe_ranges(r) if r else None
 
     def folder_plan(self, folder):
         """{"extract_bytes": bytes still to copy from the ISO into `folder`, "has_game": it has the game already}."""
@@ -578,11 +683,14 @@ class Disc:
                 e, fe = self.img.entries[p], fimg.entries[p]
                 if fe.size != e.size or not hostfs.same_file(self.path, e.lsn * iso.SECTOR, fe.host, 0, e.size):
                     reps[p] = (self.path, e.lsn * iso.SECTOR, e.size)
-        written = hostfs.write_files(folder, reps, lambda f, m: prog(0.85 + 0.13 * f, m), extra_locked=[boot])
+            # another mod's texts in the text files stay (song names are MusicKit's)
+            report["kept_texts"] = self.keep_folder_texts(folder, reps)
+        written =hostfs.write_files(folder, reps, lambda f, m: prog(0.85 + 0.13 * f, m), extra_locked=[boot])
         prog(0.99, "writing the boot image")
         report["boot_iso"] = hostfs.write_boot_iso(folder, GAME)
         report["folder"] = folder
         report["written"] = sorted(written)
+        report["boot_hint"] = hostfs.boot_hint(folder, GAME)
         prog(1.0, "done")
         return report
 

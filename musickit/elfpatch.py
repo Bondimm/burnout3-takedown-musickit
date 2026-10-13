@@ -497,6 +497,13 @@ def touched_ranges(data):
     return r
 
 
+def own_ranges(data):
+    """Address ranges whose bytes MusicKit itself may have changed in this executable (touched_ranges() and the
+    unlock words, whether unlocked or not) - everything else must be as on the disc."""
+    lay = Layout(data)
+    return touched_ranges(data) + [(va, va + 4) for va, _, _, _ in lay.unlock_sites()]
+
+
 # Signatures of the groups ([value, mask] per word), generated from SLES_525.84 (and SLUS_210.50 for USA_GROUPS) by
 # gen_signatures() into signatures.json. Patch sites match any word, so the same signatures find original and patched code.
 def _mask_of(w):
