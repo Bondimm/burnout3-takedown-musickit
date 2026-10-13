@@ -40,7 +40,7 @@ ENTRY = 24
 SEG_SIZE = 0x1000                  # the new program segment (table + shuffle order list) and the heap shift
 SHUFFLE_SIZE = 0x80                # shuffle order list (one byte per song) at the end of the new segment
 TABLE_SLOTS = (SEG_SIZE - SHUFFLE_SIZE) // ENTRY    # 165
-MAX_SONGS = 95                     # same as the other Burnout MusicKits
+MAX_SONGS = 95                     # as in the Burnout Revenge MusicKit
 # Music manager fields after the shuffle order list (offsets into the manager object). The list stays in the manager
 # up to 44 songs (room for 51) and is moved into the new segment for more songs.
 MANAGER_SHUFFLE = 0x0D
