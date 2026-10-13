@@ -11,10 +11,20 @@ Facts (European addresses; the USA build has the same code at other addresses an
   the play mode and volume settings). Code copies it into the table (table_copy, profile_load_a/_b, menu_cancel)
   and writes it back (menu_confirm, song_finished). Those must stay below index 44.
 
+- shuffle mode keeps its play order as one byte per song in the music manager object, at +0x0D. There is room for
+  51 songs there: the shuffle position (+0x40), the shuffle song count (+0x44), the stream file name (+0x48..+0x67)
+  and a copy of the playlist struct (+0x68, song count at +0x6C) follow. Two functions use that list (shuffle_set:
+  refill it when the song count changed / move to a chosen song, which loops over the shuffle song count;
+  shuffle_next: pick the next song).
+
 Up to 44 songs the table is rewritten where it is (data only). For more songs it moves into a new 4 KB program
 segment at the old end of the executable's memory (the third program header is an empty one at exactly that
 address); the heap start moves up by 4 KB (crt0 SetupHeap argument + the libc sbrk start word) and the loops above
-are limited to 44.
+are limited to 44. The shuffle order list moves to the last SHUFFLE_SIZE bytes of the same segment (memory the
+kit already owns, below the moved heap start): each of the two functions loads the list address into a register it
+never uses (t2, or t3 in the USA shuffle_set) in a branch delay slot that held a nop, and its list accesses use that
+register instead of the manager pointer. The USA shuffle_set is compiled differently (manager pointer kept in a0),
+so it has its own signature window and patch words (shuffle_set_usa, USA addresses).
 
 The game loads one text file into a fixed 0x41800-byte buffer (memory_map): the text files may grow only up to
 that size (Layout.buffer_size, read from the executable).
@@ -27,11 +37,15 @@ import struct
 
 ORIGINAL_SONGS = 44
 ENTRY = 24
-SEG_SIZE = 0x1000                  # the new program segment (table) and the heap shift
-TABLE_SLOTS = SEG_SIZE // ENTRY    # 170
-# Shuffle mode keeps its play order as one byte per song at music manager +0xD; from 96 songs on that array
-# reaches the playlist's song count at manager +0x6C. So 95 songs at most (same as Burnout Revenge).
-MAX_SONGS = 95
+SEG_SIZE = 0x1000                  # the new program segment (table + shuffle order list) and the heap shift
+SHUFFLE_SIZE = 0x80                # shuffle order list (one byte per song) at the end of the new segment
+TABLE_SLOTS = (SEG_SIZE - SHUFFLE_SIZE) // ENTRY    # 165
+MAX_SONGS = 95                     # same as the other Burnout MusicKits
+# Music manager fields after the shuffle order list (offsets into the manager object). The list stays in the manager
+# up to 44 songs (room for 51) and is moved into the new segment for more songs.
+MANAGER_SHUFFLE = 0x0D
+MANAGER_FIELDS = [(0x40, 0x44, "shuffle position"), (0x44, 0x48, "shuffle song count"),
+                  (0x48, 0x68, "stream file name"), (0x68, 0xB8, "playlist copy (song count at +0x6C)")]
 _DETECT_MAX = 100
 KNOWN = {0x75BECC18: "Europe SLES-52584", 0xCE49B0DE: "Europe SLES-52585", 0xBEBF8793: "USA SLUS-21050"}
 
@@ -46,7 +60,15 @@ EU_GROUPS = {
     "menu_cancel": (0x431960, 0x4319B4),      # EA Trax menu cancel: profile -> table
     "crt0_heap": (0x100198, 0x1001E8),        # start-up: SetupHeap(end of program, -1)
     "memory_map": (0x222640, 0x2226D0),       # fixed memory regions (text file buffer size)
+    "shuffle_set": (0x3FBC10, 0x3FBD04),      # shuffle: refill the order list / move to a chosen song
+    "shuffle_next": (0x3FC1DC, 0x3FC400),     # next song (shuffle mode takes it from the order list)
 }
+# Groups whose code differs between builds: one of each set is found (exactly once), the others are absent.
+# Their windows (and patch addresses) are USA addresses, signatures generated from SLUS_210.50.
+USA_GROUPS = {
+    "shuffle_set_usa": (0x3FB8B0, 0x3FB9C4),
+}
+ALTERNATIVES = [("shuffle_set", "shuffle_set_usa")]
 
 # Optional "unlock": the game refuses OFF for a song whose "not heard yet" bit (flags & 8) is set - every original
 # song starts with it and loses it only after playing to the end once. This word drops that check.
@@ -78,7 +100,57 @@ RELOC_PATCHES = [
     (0x1001D0, "crt0_heap", lambda c: 0x3C040000 | hi16(c["heap"]), "lui a0,%hi(heap start)"),
     (0x1001D8, "crt0_heap", lambda c: 0x24840000 | (c["heap"] & 0xFFFF), "addiu a0,a0,%lo(heap start)"),
 ]
-_SITES = {eu for eu, _, _, _ in RELOC_PATCHES + UNLOCK_PATCHES}
+
+
+def _shuffle_lo(word):
+    return lambda c: word | (c["shuffle"] & 0xFFFF)
+
+
+def _shuffle_lui(c):
+    return 0x3C0A0000 | hi16(c["shuffle"])
+
+
+# Shuffle order list moved to the new segment: t2 = %hi(list) in a branch delay slot (was nop, runs on every path
+# before the list is used; no call lies in between), then addu x,t2,i (was addu x,s1,i = manager + i) and
+# lbu/sb y,%lo(list)(x) (was 0xd(x)). t2 is not used anywhere else in these two functions.
+SHUFFLE_PATCHES = [
+    (0x3FBC30, "shuffle_set", _shuffle_lui, "lui t2,%hi(shuffle)  (was nop)"),
+    (0x3FBC4C, "shuffle_set", 0x01441821, "addu v1,t2,a0  (was addu v1,s1,a0)"),
+    (0x3FBC50, "shuffle_set", _shuffle_lo(0x90630000), "lbu v1,%lo(shuffle)(v1)  (was lbu v1,0xd(v1))"),
+    (0x3FBC84, "shuffle_set", 0x01462021, "addu a0,t2,a2  (was addu a0,s1,a2)"),
+    (0x3FBC88, "shuffle_set", _shuffle_lo(0xA0860000), "sb a2,%lo(shuffle)(a0)"),
+    (0x3FBCD8, "shuffle_set", 0x01493021, "addu a2,t2,t1  (was addu a2,s1,t1)"),
+    (0x3FBCDC, "shuffle_set", _shuffle_lo(0x90C40000), "lbu a0,%lo(shuffle)(a2)"),
+    (0x3FBCE4, "shuffle_set", 0x01474021, "addu t0,t2,a3  (was addu t0,s1,a3)"),
+    (0x3FBCEC, "shuffle_set", _shuffle_lo(0x91070000), "lbu a3,%lo(shuffle)(t0)"),
+    (0x3FBCF0, "shuffle_set", _shuffle_lo(0xA1040000), "sb a0,%lo(shuffle)(t0)"),
+    (0x3FBCF4, "shuffle_set", _shuffle_lo(0xA0C70000), "sb a3,%lo(shuffle)(a2)"),
+    (0x3FC1F8, "shuffle_next", _shuffle_lui, "lui t2,%hi(shuffle)  (was nop)"),
+    (0x3FC2D8, "shuffle_next", 0x01453021, "addu a2,t2,a1  (was addu a2,s1,a1)"),
+    (0x3FC2E0, "shuffle_next", _shuffle_lo(0x90D00000), "lbu s0,%lo(shuffle)(a2)"),
+    (0x3FC388, "shuffle_next", 0x01462821, "addu a1,t2,a2  (was addu a1,s1,a2)"),
+    (0x3FC38C, "shuffle_next", _shuffle_lo(0xA0A60000), "sb a2,%lo(shuffle)(a1)"),
+    (0x3FC3DC, "shuffle_next", 0x01493021, "addu a2,t2,t1  (was addu a2,s1,t1)"),
+    (0x3FC3E0, "shuffle_next", _shuffle_lo(0x90C50000), "lbu a1,%lo(shuffle)(a2)"),
+    (0x3FC3E8, "shuffle_next", 0x01474021, "addu t0,t2,a3  (was addu t0,s1,a3)"),
+    (0x3FC3F0, "shuffle_next", _shuffle_lo(0x91070000), "lbu a3,%lo(shuffle)(t0)"),
+    (0x3FC3F4, "shuffle_next", _shuffle_lo(0xA1050000), "sb a1,%lo(shuffle)(t0)"),
+    (0x3FC3F8, "shuffle_next", _shuffle_lo(0xA0C70000), "sb a3,%lo(shuffle)(a2)"),
+    # USA shuffle_set (manager pointer in a0, t2 taken, no calls: t3 holds the list address)
+    (0x3FB8BC, "shuffle_set_usa", lambda c: 0x3C0B0000 | hi16(c["shuffle"]), "lui t3,%hi(shuffle)  (was nop)"),
+    (0x3FB8D8, "shuffle_set_usa", 0x01661821, "addu v1,t3,a2  (was addu v1,a0,a2)"),
+    (0x3FB8DC, "shuffle_set_usa", _shuffle_lo(0x90630000), "lbu v1,%lo(shuffle)(v1)"),
+    (0x3FB910, "shuffle_set_usa", 0x01673021, "addu a2,t3,a3  (was addu a2,a0,a3)"),
+    (0x3FB914, "shuffle_set_usa", _shuffle_lo(0xA0C70000), "sb a3,%lo(shuffle)(a2)"),
+    (0x3FB964, "shuffle_set_usa", 0x016A3821, "addu a3,t3,t2  (was addu a3,a0,t2)"),
+    (0x3FB968, "shuffle_set_usa", _shuffle_lo(0x90E60000), "lbu a2,%lo(shuffle)(a3)"),
+    (0x3FB970, "shuffle_set_usa", 0x01684821, "addu t1,t3,t0  (was addu t1,a0,t0)"),
+    (0x3FB978, "shuffle_set_usa", _shuffle_lo(0x91280000), "lbu t0,%lo(shuffle)(t1)"),
+    (0x3FB97C, "shuffle_set_usa", _shuffle_lo(0xA1260000), "sb a2,%lo(shuffle)(t1)"),
+    (0x3FB980, "shuffle_set_usa", _shuffle_lo(0xA0E80000), "sb t0,%lo(shuffle)(a3)"),
+]
+RELOC_PATCHES += SHUFFLE_PATCHES
+_SITES = {(g, eu) for eu, g, _, _ in RELOC_PATCHES + UNLOCK_PATCHES}
 
 
 def crc(data):
@@ -169,12 +241,21 @@ class Layout:
         if self.relocated and ph[2][5] != SEG_SIZE:
             raise ValueError("unexpected extra program segment")
         self.table_new = self.end
+        self.shuffle = self.end + SEG_SIZE - SHUFFLE_SIZE    # moved shuffle order list
         self.delta = {}
-        for g, (a, b) in EU_GROUPS.items():
+        found = {}
+        for g, (a, b) in list(EU_GROUPS.items()) + list(USA_GROUPS.items()):
             hits = _find_group(e, SIGNATURES[g], self.seg1)
-            if len(hits) != 1:
-                raise ValueError("code signature %s found %d times (unsupported executable)" % (g, len(hits)))
-            self.delta[g] = hits[0] - a
+            found[g] = len(hits)
+            self.delta[g] = hits[0] - a if len(hits) == 1 else None
+        alt = {g for group in ALTERNATIVES for g in group}
+        for g, n in found.items():
+            if g not in alt and n != 1:
+                raise ValueError("code signature %s found %d times (unsupported executable)" % (g, n))
+        for group in ALTERNATIVES:
+            if sorted(found[g] for g in group) != [0] * (len(group) - 1) + [1]:
+                raise ValueError("code signature %s found %s times (unsupported executable)"
+                                 % ("/".join(group), "/".join(str(found[g]) for g in group)))
 
         def site(eu, g):
             return eu + self.delta[g]
@@ -240,11 +321,12 @@ class Layout:
         return hits[0]
 
     def ctx(self):
-        return {"table": self.table_new, "profile": self.profile, "heap": self.end + SEG_SIZE}
+        return {"table": self.table_new, "profile": self.profile, "heap": self.end + SEG_SIZE,
+                "shuffle": self.shuffle}
 
     def sites(self):
         """[(vaddr, EU vaddr, template, meaning)] of the relocation patches for this build."""
-        return [(eu + self.delta[g], eu, t, m) for eu, g, t, m in RELOC_PATCHES]
+        return [(eu + self.delta[g], eu, t, m) for eu, g, t, m in RELOC_PATCHES if self.delta[g] is not None]
 
     def unlock_sites(self):
         return [(eu + self.delta[g], eu, t, m) for eu, g, t, m in UNLOCK_PATCHES]
@@ -322,12 +404,17 @@ def relocate(data):
             sh[4], sh[5] = off, SEG_SIZE
             out.set_section(i, sh)
     out.w32(lay.playlist + 0x4C, lay.table_new)
+    out.w32(lay.sbrk, lay.ctx()["heap"])
+    _write_sites(out, lay)
+    return _fix_crc(out.d, target_crc, appended=False)
+
+
+def _write_sites(e, lay):
+    """Write every relocation patch word (the same words again on an executable that already has them)."""
     c = lay.ctx()
-    out.w32(lay.sbrk, c["heap"])
     for va, eu, tmpl, _ in lay.sites():
         if tmpl is not None:
-            out.w32(va, tmpl(c) if callable(tmpl) else tmpl)
-    return _fix_crc(out.d, target_crc, appended=False)
+            e.w32(va, tmpl(c) if callable(tmpl) else tmpl)
 
 
 def set_table(data, entries):
@@ -354,12 +441,34 @@ def set_table(data, entries):
             else:
                 ent = (0,) * 6
             struct.pack_into("<6I", e.d, e.file_offset(lay.table_new + ENTRY * i), *ent)
+        o = e.file_offset(lay.shuffle)
+        e.d[o:o + SHUFFLE_SIZE] = bytes(SHUFFLE_SIZE)     # the game fills the shuffle order list itself
+        # executables patched by older MusicKit versions kept the shuffle order list in the music manager (room for
+        # 51 songs only): writing all patch words again moves it
+        _write_sites(e, lay)
     else:
         for i in range(total):
             struct.pack_into("<6I", e.d, e.file_offset(lay.table_old + ENTRY * i), i, 0, *entries[i])
     e.w32(lay.playlist + 4, total)
     appended = len(e.d) > e.content_end()
     return _fix_crc(e.d, target_crc, appended)
+
+
+def shuffle_list(data):
+    """Where the game keeps the shuffle order list: ("segment", address) once moved into the new program segment,
+    else ("manager", MANAGER_SHUFFLE) (offset into the music manager object, room up to the shuffle position)."""
+    lay = Layout(data)
+    if lay.relocated:
+        c = lay.ctx()
+        if all(lay.elf.r32(va) == (t(c) if callable(t) else t) for va, eu, t, _ in lay.sites()
+               if eu in {s[0] for s in SHUFFLE_PATCHES}):
+            return "segment", lay.shuffle
+    return "manager", MANAGER_SHUFFLE
+
+
+def manager_overlap(start, count):
+    """Music manager fields a per-song byte list at manager offset `start` with `count` songs runs into."""
+    return [name for lo, hi, name in MANAGER_FIELDS if start < hi and lo < start + count]
 
 
 def _fix_crc(data, target, appended):
@@ -388,8 +497,8 @@ def touched_ranges(data):
     return r
 
 
-# Signatures of the EU groups ([value, mask] per word), generated from SLES_525.84 by gen_signatures() into
-# signatures.json. Patch sites match any word, so the same signatures find original and patched code.
+# Signatures of the groups ([value, mask] per word), generated from SLES_525.84 (and SLUS_210.50 for USA_GROUPS) by
+# gen_signatures() into signatures.json. Patch sites match any word, so the same signatures find original and patched code.
 def _mask_of(w):
     op = w >> 26
     if op in (0x02, 0x03):                 # j / jal: targets differ between builds
@@ -399,20 +508,25 @@ def _mask_of(w):
     return 0xFFFFFFFF
 
 
-def gen_signatures(eu_data, path=None):
+def gen_signatures(eu_data, path=None, usa_data=None):
+    """Signatures of EU_GROUPS from SLES_525.84 and of USA_GROUPS from SLUS_210.50 (kept as they are without it)."""
     import json
     import os
-    e = Elf(eu_data)
     sig = {}
-    for g, (a, b) in EU_GROUPS.items():
-        words = []
-        for va in range(a, b, 4):
-            if va in _SITES:
-                words.append([0, 0])
-            else:
-                m = _mask_of(e.r32(va))
-                words.append([e.r32(va) & m, m])
-        sig[g] = words
+    for groups, data in ((EU_GROUPS, eu_data), (USA_GROUPS, usa_data)):
+        if data is None:
+            sig.update({g: SIGNATURES[g] for g in groups})
+            continue
+        e = Elf(data)
+        for g, (a, b) in groups.items():
+            words = []
+            for va in range(a, b, 4):
+                if (g, va) in _SITES:
+                    words.append([0, 0])
+                else:
+                    m = _mask_of(e.r32(va))
+                    words.append([e.r32(va) & m, m])
+            sig[g] = words
     path = path or os.path.join(os.path.dirname(os.path.abspath(__file__)), "signatures.json")
     json.dump(sig, open(path, "w"))
     global SIGNATURES

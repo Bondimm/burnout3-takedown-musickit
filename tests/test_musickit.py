@@ -239,6 +239,94 @@ def test_unlock_off():
         assert any(lo <= max(sites) < hi for lo, hi in elfpatch.touched_ranges(ru))
 
 
+def test_shuffle_list_room():
+    """The shuffle order list (one byte per song) must not run into other music manager fields or the song table."""
+    assert elfpatch.manager_overlap(elfpatch.MANAGER_SHUFFLE, 51) == []
+    assert elfpatch.manager_overlap(elfpatch.MANAGER_SHUFFLE, elfpatch.ORIGINAL_SONGS) == []   # list stays there
+    # the list kept in the manager is too small for more songs: from 52 songs on it overwrites the shuffle position,
+    # then the shuffle song count, the stream file name and the playlist copy
+    assert elfpatch.manager_overlap(elfpatch.MANAGER_SHUFFLE, 52) == ["shuffle position"]
+    assert len(elfpatch.manager_overlap(elfpatch.MANAGER_SHUFFLE, elfpatch.MAX_SONGS)) == 4
+    # moved list: after every table slot, inside the new segment, room for every song
+    assert elfpatch.TABLE_SLOTS * elfpatch.ENTRY <= elfpatch.SEG_SIZE - elfpatch.SHUFFLE_SIZE
+    assert elfpatch.MAX_SONGS <= min(elfpatch.SHUFFLE_SIZE, elfpatch.TABLE_SLOTS, 256)   # list entries are bytes
+
+
+def test_shuffle_list_moved():
+    for name, d, crc, *_ in _elf_versions():
+        assert elfpatch.shuffle_list(d) == ("manager", elfpatch.MANAGER_SHUFFLE)
+        assert elfpatch.shuffle_list(elfpatch.set_table(d, [(477, 478, 479, 7)] * 44))[0] == "manager"
+        out = elfpatch.set_table(d, [(477, 478, 479, 7)] * elfpatch.MAX_SONGS)
+        lay = elfpatch.Layout(out)
+        where, addr = elfpatch.shuffle_list(out)
+        assert where == "segment" and addr == lay.shuffle, name
+        assert lay.table_new + elfpatch.TABLE_SLOTS * elfpatch.ENTRY <= addr
+        assert addr + elfpatch.MAX_SONGS <= lay.table_new + elfpatch.SEG_SIZE == lay.heap
+        # no list access through the manager pointer is left in the shuffle functions (byte load / store at +0x0D)
+        for g, (a, b) in list(elfpatch.EU_GROUPS.items()) + list(elfpatch.USA_GROUPS.items()):
+            if g.startswith("shuffle") and lay.delta[g] is not None:
+                words = [lay.elf.r32(va + lay.delta[g]) for va in range(a, b, 4)]
+                assert not [w for w in words if w >> 26 in (0x20, 0x24, 0x28) and w & 0xFFFF == 0x0D], (name, g)
+        # an executable moved by an older MusicKit version (list still in the manager) is caught and upgraded
+        e, o = elfpatch.Elf(out), elfpatch.Elf(d)
+        for va, eu, _, _ in lay.sites():
+            if eu in {s[0] for s in elfpatch.SHUFFLE_PATCHES}:
+                e.w32(va, o.r32(va))
+        old = bytes(e.d)
+        assert elfpatch.shuffle_list(old) == ("manager", elfpatch.MANAGER_SHUFFLE)
+        assert elfpatch.manager_overlap(elfpatch.MANAGER_SHUFFLE, elfpatch.read_song_count(old))
+        up = elfpatch.set_table(old, [(477, 478, 479, 7)] * elfpatch.MAX_SONGS)
+        assert elfpatch.shuffle_list(up) == ("segment", addr) and elfpatch.crc(up) == crc and up == out, name
+
+
+# Addresses written by public PCSX2 patches for Burnout 3 (pcsx2_patches: widescreen, 50/60 FPS, 480p / progressive,
+# motion blur / bloom, 60 FPS menus / crashes, MPH to KPH, particles; Nahelam's HostFS patches), as [start, end)
+# ranges per PCSX2 CRC. MusicKit must not write any of them.
+_HOSTFS = [(0x113DB8, 0x113DBC), (0x114574, 0x114584), (0x11F218, 0x11F2D4)]
+CHEAT_RANGES = {
+    0x75BECC18: _HOSTFS + [
+        (0x4E0FB8, 0x4E0FBC), (0x4E11FC, 0x4E1200), (0x66644D, 0x66644E),
+        (0x4E1D5C, 0x4E1D5D), (0x4E2CC0, 0x4E2CC4), (0x4F561C, 0x4F5620), (0x51AE34, 0x51AE38), (0x51C024, 0x51C028),
+        (0x21B764, 0x21B768), (0x228154, 0x228155), (0x228170, 0x228174), (0x437118, 0x43711C), (0x437120, 0x437124)],
+    0xCE49B0DE: _HOSTFS,
+    0xBEBF8793: _HOSTFS + [
+        (0x130DD8, 0x130DEC), (0x1320D8, 0x1320DC), (0x134F2C, 0x134F2E), (0x134F74, 0x134F78), (0x1A176C, 0x1A176E),
+        (0x1A1774, 0x1A1778), (0x1A17D0, 0x1A17D2), (0x1A17D8, 0x1A17DC), (0x1A3BA0, 0x1A3BA2), (0x1A3D78, 0x1A3D7A),
+        (0x1D3F2C, 0x1D3F30), (0x261E6C, 0x261E70), (0x30D7E4, 0x30D7E6), (0x30D834, 0x30D838), (0x31B180, 0x31B182),
+        (0x31B1F4, 0x31B1F8), (0x31D6E4, 0x31D6E6), (0x31D6F8, 0x31D6FC), (0x31D73C, 0x31D73E), (0x31D750, 0x31D754),
+        (0x31D790, 0x31D792), (0x31D7A4, 0x31D7A8), (0x31D7E8, 0x31D7EA), (0x31D7FC, 0x31D800), (0x31D840, 0x31D842),
+        (0x31D854, 0x31D858), (0x31DA20, 0x31DA22), (0x31DA40, 0x31DA44), (0x38AE00, 0x38AE08), (0x38AE38, 0x38AE3A),
+        (0x38AE4C, 0x38AE50), (0x3A6984, 0x3A6986), (0x3A6998, 0x3A699C), (0x3A69C8, 0x3A69CA), (0x3A69DC, 0x3A69E0),
+        (0x3D70BC, 0x3D70C0), (0x3D7238, 0x3D723C), (0x3D72F4, 0x3D72F8), (0x437758, 0x43775C), (0x4858C0, 0x485960),
+        (0x4859A0, 0x4859E8), (0x4B7658, 0x4B765C), (0x4B7668, 0x4B766C), (0x4B7678, 0x4B767C), (0x4B7688, 0x4B768C),
+        (0x4CA638, 0x4CA63C), (0x4CA640, 0x4CA644), (0x4CA650, 0x4CA654), (0x4CA658, 0x4CA65C), (0x4CA660, 0x4CA664),
+        (0x4D1568, 0x4D156C), (0x4D1570, 0x4D1574), (0x4E0A38, 0x4E0A3C), (0x4E0A94, 0x4E0A98), (0x4E0C3C, 0x4E0C40),
+        (0x4E0C70, 0x4E0C74), (0x4E0C7C, 0x4E0C84), (0x4E105C, 0x4E1060), (0x665ECD, 0x665ECE), (0x665F28, 0x665F2B),
+        (0x6682B0, 0x6682B4), (0x669B30, 0x669B34)],
+}
+
+
+def _overlaps(a, b):
+    return [(hex(lo), hex(hi)) for lo, hi in a for x, y in b if lo < y and x < hi]
+
+
+def test_no_overlap_with_pcsx2_patches_static():
+    """European executable: every word MusicKit can write (patch sites, playlist, moved table + shuffle list, heap
+    start) stays clear of the public patches - checked from the address lists alone (no disc needed)."""
+    crc, playlist, table, profile, sbrk = VERSIONS["SLES_525.84"][:5]
+    end = 0x1ECEF80                                 # end of the program memory = new segment
+    eu = [(va, va + 4) for va, g, _, _ in elfpatch.RELOC_PATCHES + elfpatch.UNLOCK_PATCHES if g in elfpatch.EU_GROUPS]
+    eu += [(playlist + 4, playlist + 8), (playlist + 0x4C, playlist + 0x50), (table, table + 44 * 24),
+           (sbrk, sbrk + 4), (end, end + elfpatch.SEG_SIZE)]
+    assert _overlaps(eu, CHEAT_RANGES[crc]) == []
+
+
+def test_no_overlap_with_pcsx2_patches():
+    for name, d, crc, *_ in _elf_versions():
+        out = elfpatch.unlock(elfpatch.set_table(d, [(477, 478, 479, 7)] * elfpatch.MAX_SONGS))
+        assert _overlaps(elfpatch.touched_ranges(out), CHEAT_RANGES[crc]) == [], name
+
+
 def test_udf_tag_crc():
     for p in _isos():
         img = iso.IsoImage(p)
