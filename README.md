@@ -201,7 +201,7 @@ demo on the disc cannot be started (save your network settings on the memory car
 | Python | Python 3.12 – 3.15 (64-bit), or none at all: the setup uses an installed Python for which every package is available ready-made, otherwise it downloads a private Python 3.13 into the `.python` folder (no admin rights needed, about 100 MB) |
 | Python packages | installed automatically by `setup.bat` / `setup.command` / `setup.sh` into a private `.venv`: numpy, numba, glfw, PyOpenGL, imgui-bundle, Pillow, soundfile, pyloudnorm, pycdlib, pytest (see [requirements.txt](requirements.txt)) |
 | ffmpeg | downloaded automatically by `setup.bat` / `setup.command` / `setup.sh` (or install it yourself: Windows `winget install Gyan.FFmpeg`, macOS `brew install ffmpeg`, Linux your package manager, e.g. `sudo apt install ffmpeg`) |
-| Graphics | any GPU with OpenGL 3.3 (for the MusicKit window) |
+| Graphics | any GPU with OpenGL 3.0 or newer and its driver installed (for the MusicKit window; macOS: 3.3) |
 | Disk space | about 5 GB free for the new disc image (~3–4 GB) — or about 4 GB for a HostFS folder — plus ~1 GB for Python packages and ffmpeg |
 | The game | your own disc image (.iso) of Burnout 3: Takedown for PS2: Europe `SLES-52584` or `SLES-52585`, or USA `SLUS-21050` |
 | Internet | only once, during `setup.bat` / `setup.command` / `setup.sh` |
